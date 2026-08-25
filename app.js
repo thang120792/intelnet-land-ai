@@ -4,10 +4,10 @@
 // ============================================================
 console.log('✅ ThanhHoa Land AI v2026 loaded');
 
-// ── Cấu hình Backend URL (Tự động nhận diện Localhost hoặc Ngrok/Cloudflare) ──
-const API_BASE_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-    ? ''
-    : 'https://swab-underwear-theatrics.ngrok-free.dev';
+// ── Cấu hình Backend URL (Tự động nhận diện Render, Localhost hoặc custom domain) ──
+const API_BASE_URL = (window.location.hostname.includes('ngrok') || window.location.protocol === 'file:')
+    ? 'https://intelnet-land-ai.onrender.com'
+    : '';
 
 // ── Global State ──
 const loadedThumbnails = {
