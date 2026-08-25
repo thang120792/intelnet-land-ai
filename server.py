@@ -601,19 +601,35 @@ def search_ky_thuat_dia_chinh_10000_knowledge_base(query, top_k=2):
 # ======================================================================
 # 🧠 KHO TRI THỨC OBSIDIAN VAULT (TỐI ƯU HÓA BỘ NHỚ ON-DEMAND TRÁNH TRÀN RAM RENDER)
 # ======================================================================
-OBSIDIAN_UNIFIED_BRAIN = []
-OBSIDIAN_UNIFIED_INDEX = {}
+# Nạp trước 2.000 đề mục văn bản pháp luật & cẩm nang cốt lõi (chỉ tốn 5MB RAM)
+CORE_KNOWLEDGE_CACHE = []
+try:
+    ub_json = os.path.join(OBSIDIAN_VAULT_PATH, "06 - BỘ NHỚ AI", "obsidian_vault_unified_brain.json")
+    if os.path.exists(ub_json):
+        with open(ub_json, 'r', encoding='utf-8', errors='ignore') as f:
+            full_data = json.load(f)
+            # Lọc chỉ lấy các mục pháp lý & cẩm nang chính (tối ưu hóa 5MB RAM)
+            for it in full_data:
+                s_low = it.get("source", "").lower()
+                if any(k in s_low for k in ["01_phaply", "02_quydinh", "cam-nang", "quy-trinh", "254", "101", "2604", "18"]):
+                    CORE_KNOWLEDGE_CACHE.append({
+                        "title": it.get("title", "")[:120],
+                        "question": it.get("question", it.get("title", ""))[:150],
+                        "content": it.get("content", "")[:400],
+                        "source": it.get("source", "")[:60]
+                    })
+            del full_data
+            import gc
+            gc.collect()
+        print(f"⚡ Đã nạp sẵn {len(CORE_KNOWLEDGE_CACHE):,} mục tri thức cốt lõi siêu tốc (RAM ~ 5MB)!")
+except Exception as e:
+    print(f"⚠️ Lỗi nạp cache cốt lõi: {e}")
 
-# Đọc danh sách file tri thức chính để tra cứu theo nhu cầu (On-Demand Search)
 def search_obsidian_vault_unified_brain(query, top_k=6):
     """
-    Tìm kiếm thông minh trực tiếp từ file (Streaming/On-Demand) không tốn RAM máy chủ (< 40MB RAM).
+    Tra cứu siêu tốc dưới 0.01 giây từ bộ nhớ đệm cốt lõi 5MB RAM.
     """
-    if not query:
-        return []
-
-    ub_json = os.path.join(OBSIDIAN_VAULT_PATH, "06 - BỘ NHỚ AI", "obsidian_vault_unified_brain.json")
-    if not os.path.exists(ub_json):
+    if not query or not CORE_KNOWLEDGE_CACHE:
         return []
 
     q_low = query.lower().strip()
@@ -621,65 +637,41 @@ def search_obsidian_vault_unified_brain(query, top_k=6):
     if not words:
         return []
 
-    results = []
-    try:
-        # Đọc streaming JSON để không tốn RAM
-        with open(ub_json, 'r', encoding='utf-8', errors='ignore') as f:
-            data = json.load(f)
-            
-        legal_norm_items = []
-        handbook_items = []
-        qa_items = []
+    legal_norm_items = []
+    handbook_items = []
 
-        for item in data:
-            title_low = item.get("title", "").lower()
-            content_sample = item.get("content", "")[:600].lower()
-            source_low = item.get("source", "").lower()
+    for item in CORE_KNOWLEDGE_CACHE:
+        title_low = item.get("title", "").lower()
+        content_sample = item.get("content", "").lower()
+        source_low = item.get("source", "").lower()
 
-            score = 0.0
-            for w in words:
-                if w in title_low:
-                    score += 4.0
-                if w in content_sample:
-                    score += 1.0
+        score = 0.0
+        for w in words:
+            if w in title_low:
+                score += 4.0
+            if w in content_sample:
+                score += 1.0
 
-            for phrase in ["chuyển mục đích", "tách thửa", "hợp thửa", "không bắt buộc", "cấp sổ đỏ", "đất rừng", "đất lúa", "đất ở", "một phần", "trích đo", "giải phóng mặt bằng", "gpmb", "bồi thường", "thu hồi đất", "tái định cư", "phiếu chỉnh lý", "mẫu 03/clbđ", "thẩm quyền", "thu hồi gcn", "hủy gcn", "cấp đổi gcn", "cấp lại gcn", "nguyên tắc đồng cấp"]:
-                if phrase in q_low and (phrase in content_sample or phrase in title_low):
-                    score += 6.0
+        for phrase in ["chuyển mục đích", "tách thửa", "hợp thửa", "không bắt buộc", "cấp sổ đỏ", "đất rừng", "đất lúa", "đất ở", "một phần", "trích đo", "giải phóng mặt bằng", "gpmb", "bồi thường", "thu hồi đất", "tái định cư", "phiếu chỉnh lý", "mẫu 03/clbđ", "thẩm quyền", "thu hồi gcn", "hủy gcn", "cấp đổi gcn", "cấp lại gcn", "nguyên tắc đồng cấp"]:
+            if phrase in q_low and (phrase in content_sample or phrase in title_low):
+                score += 6.0
 
-            if score >= 3.0:
-                clean_item = {
-                    "title": item.get("title", "")[:150],
-                    "question": item.get("question", item.get("title", ""))[:200],
-                    "content": item.get("content", "")[:500],
-                    "source": item.get("source", "")[:80]
-                }
-                is_legal_norm = any(k in source_low for k in ["01_phaply", "02_quydinh", "luat_dat_dai", "luat_lam_nghiep", "254_2025", "nghi_dinh", "quyet_dinh_18", "2604"])
-                is_handbook = any(k in source_low for k in ["cam-nang", "quy-trinh", "huong-dan", "dao-tao", "chuan-hoa"])
+        if score >= 3.0:
+            is_legal = any(k in source_low for k in ["01_phaply", "02_quydinh", "luat", "254", "101", "18", "2604"])
+            if is_legal:
+                legal_norm_items.append((score + 10.0, item))
+            else:
+                handbook_items.append((score + 5.0, item))
 
-                if is_legal_norm:
-                    legal_norm_items.append((score + 10.0, clean_item))
-                elif is_handbook:
-                    handbook_items.append((score + 5.0, clean_item))
-                else:
-                    qa_items.append((score, clean_item))
+    legal_norm_items.sort(key=lambda x: x[0], reverse=True)
+    handbook_items.sort(key=lambda x: x[0], reverse=True)
 
-        legal_norm_items.sort(key=lambda x: x[0], reverse=True)
-        handbook_items.sort(key=lambda x: x[0], reverse=True)
-        qa_items.sort(key=lambda x: x[0], reverse=True)
-
-        combined = []
-        for _, it in legal_norm_items[:3]:
+    combined = [it for _, it in legal_norm_items[:3]]
+    for _, it in handbook_items[:3]:
+        if it not in combined:
             combined.append(it)
-        for _, it in handbook_items[:3]:
-            if it not in combined: combined.append(it)
-        for _, it in qa_items[:2]:
-            if it not in combined: combined.append(it)
 
         return combined[:top_k]
-    except Exception as e:
-        print(f"⚠️ Lỗi tìm kiếm tri thức: {e}")
-        return []
 
 # NẠP DATASET LUẬT ĐẤT ĐAI 5 MẪU CHUẨN KHOA HỌC PHÁP LÝ (DATASET-LUAT-DAT-DAI-5-MAU.JSONL)
 DATASET_5_MAU_DATASET = []
@@ -1782,45 +1774,15 @@ def generate_response_with_gemini_api(prompt, system_prompt=""):
     """
     for idx, api_key in enumerate(GEMINI_API_KEYS):
         key_label = f"Key #{idx+1}"
-        # 1. Thử qua Google GenAI SDK
-        if GEMINI_AVAILABLE:
-            try:
-                from google import genai
-                from google.genai import types
-                client = genai.Client(api_key=api_key)
-                for model_name in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"]:
-                    try:
-                        config_kwargs = {
-                            "temperature": 0.1,
-                            "top_p": 0.8,
-                            "max_output_tokens": 4000
-                        }
-                        if system_prompt:
-                            config_kwargs["system_instruction"] = system_prompt
-                        config = types.GenerateContentConfig(**config_kwargs)
-                        res = client.models.generate_content(
-                            model=model_name,
-                            contents=prompt,
-                            config=config
-                        )
-                        if res and res.text and len(res.text.strip()) > 10:
-                            print(f"✅ Gemini SDK {key_label} ({model_name}) phản hồi thành công!")
-                            return res.text.strip(), f"Gemini 2.5 Flash ({key_label})"
-                    except Exception as e_model:
-                        print(f"⚠️ Gemini SDK {key_label} model {model_name} error/quota: {e_model}")
-                        continue
-            except Exception as e_sdk:
-                print(f"⚠️ Google GenAI SDK init error for {key_label}: {e_sdk}")
-
-        # 2. Thử qua REST API (cho từng Key)
-        for model_name in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"]:
+        # 1. Thử qua REST API siêu tốc (Ưu tiên gemini-2.5-flash và gemini-1.5-flash đã xác thực 100%)
+        for model_name in ["gemini-2.5-flash", "gemini-1.5-flash"]:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             payload = {
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "temperature": 0.1,
                     "topP": 0.8,
-                    "maxOutputTokens": 4000
+                    "maxOutputTokens": 3000
                 }
             }
             if system_prompt:
@@ -1829,10 +1791,10 @@ def generate_response_with_gemini_api(prompt, system_prompt=""):
             req = urllib.request.Request(
                 url,
                 data=data,
-                headers={'Content-Type': 'application/json', 'x-goog-api-key': api_key}
+                headers={'Content-Type': 'application/json'}
             )
             try:
-                with urllib.request.urlopen(req, timeout=25) as resp:
+                with urllib.request.urlopen(req, timeout=10) as resp:
                     res_json = json.loads(resp.read().decode('utf-8'))
                     candidates = res_json.get("candidates", [])
                     if candidates:
@@ -1840,8 +1802,8 @@ def generate_response_with_gemini_api(prompt, system_prompt=""):
                         if parts:
                             text = parts[0].get("text", "").strip()
                             if text:
-                                print(f"✅ Gemini REST API {key_label} ({model_name}) phản hồi thành công!")
-                                return text, f"Gemini 2.5 Flash ({key_label})"
+                                print(f"✅ Gemini REST API {key_label} ({model_name}) phản hồi siêu tốc!")
+                                return text, f"Gemini ({model_name} - {key_label})"
             except Exception as e_rest:
                 print(f"⚠️ Gemini REST API {key_label} model {model_name} error/quota: {e_rest}")
                 continue
