@@ -1,0 +1,25 @@
+﻿# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Backup files
+*Copy*.py
+*.bak
+
+# Zalo bot (không cần cho web bot)
+zalo_bot.py
+chay_zalo_bot.bat
+
+# Vault files gốc (chỉ cần JSON đã train)
+obsidian_vault/01_PhapLy_TrungUong/
+obsidian_vault/02_QuyDinh_DiaPhuong/
+obsidian_vault/03_ BOTHUTUC/
+obsidian_vault/04_CHI NHANH VPDK/
+obsidian_vault/06 - BỘ NHỚ AI/BAO_CAO_CAU_HOI_CHUA_TRA_LOI/
+obsidian_vault/06 - BỘ NHỚ AI/BAO_CAO_CAU_HOI_KHAC_HANG/
+obsidian_vault/06 - BỘ NHỚ AI/New folder/
+
+# Training script (không cần trên server)
+train_obsidian_vault.py
+test_init.py
