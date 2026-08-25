@@ -2320,28 +2320,17 @@ def generate_response_with_antigravity_ai_engine(question, intent_type, context_
         f"{rag_context_block}"
     )
 
-    # 1. GỌI ZENMUX MULTI-MODEL API (Dots3-Note-Prev, GLM-5.3, DeepSeek-V4 Flash)
-    zenmux_sys_prompt = (
-        "VAI TRÒ: Bạn là Chuyên gia Suy Luận Địa Chính & Pháp Lý Đất Đai Thông Minh. Sử dụng Quy trình 4 bước suy luận địa chính chuẩn mực (Temporal Legal Grounding & Boundary Analysis).\n"
-        "QUY TẮC: Không chào hỏi mào đầu. Bắt đầu ngay bằng '📌 KẾT LUẬN:'. Tuyệt đối không ảo giác điều khoản luật.\n"
-        "CẤU TRÚC ĐẦU RA BẮT BUỘC:\n"
-        "📌 KẾT LUẬN: (Trả lời thẳng câu hỏi, viết hoa từ khóa chính, chỉ rõ lỗi sai danh xưng nếu có)\n\n"
-        "⚖️ CĂN CỨ PHÁP LÝ:\n"
-        "- (Điểm, Khoản, Điều, Văn bản pháp luật chính xác)\n\n"
-        "📝 ĐIỀU KIỆN/HƯỚNG DẪN:\n"
-        "- (Phân tích chi tiết 2 trường hợp thẩm quyền xã vs chi nhánh VPĐKĐĐ, mẫu biểu 03/CLBĐ)\n\n"
-        "🌾 (Câu hỏi mở thân thiện đề nghị hỗ trợ bước tiếp theo)"
-    )
-    zenmux_ans, zenmux_model = generate_response_with_zenmux_api(master_prompt, system_prompt=zenmux_sys_prompt)
-    if zenmux_ans and len(zenmux_ans.strip()) > 30:
-        zenmux_ans = sanitize_legal_hallucinations(zenmux_ans, question)
-        return zenmux_ans, f"⚡ {zenmux_model}"
-
-    # 2. GỌI GEMINI 2.5 FLASH API (Dự phòng tốc độ cao)
+    # 1. ƯU TIÊN 1: GỌI GEMINI 2.5/3.6 FLASH API (5 Keys dự phòng - Tốc độ cao 100% ổn định)
     gemini_ans, gemini_model = generate_response_with_gemini_api(master_prompt, system_prompt=zenmux_sys_prompt)
     if gemini_ans and len(gemini_ans.strip()) > 30:
         gemini_ans = sanitize_legal_hallucinations(gemini_ans, question)
         return gemini_ans, f"✨ {gemini_model}"
+
+    # 2. ƯU TIÊN 2: GỌI ZENMUX MULTI-MODEL API (GLM-5.3, Dots3, DeepSeek)
+    zenmux_ans, zenmux_model = generate_response_with_zenmux_api(master_prompt, system_prompt=zenmux_sys_prompt)
+    if zenmux_ans and len(zenmux_ans.strip()) > 30:
+        zenmux_ans = sanitize_legal_hallucinations(zenmux_ans, question)
+        return zenmux_ans, f"⚡ {zenmux_model}"
 
     # 3. FAILOVER SANG OLLAMA LOCAL (Chỉ chạy khi LOCAL MODE - có GPU/Ollama cài đặt)
     if not CLOUD_MODE:
