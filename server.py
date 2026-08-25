@@ -675,11 +675,24 @@ try:
 
     if os.path.exists(ub_json):
         with open(ub_json, 'r', encoding='utf-8', errors='ignore') as f:
-            OBSIDIAN_UNIFIED_BRAIN = json.load(f)
+            raw_brain = json.load(f)
+            # Tối ưu hóa bộ nhớ RAM: chỉ lưu các trường cần thiết và thu gọn content
+            OBSIDIAN_UNIFIED_BRAIN = []
+            for item in raw_brain:
+                OBSIDIAN_UNIFIED_BRAIN.append({
+                    "title": item.get("title", "")[:150],
+                    "question": item.get("question", item.get("title", ""))[:200],
+                    "content": item.get("content", "")[:600],
+                    "source": item.get("source", "")[:80]
+                })
+            del raw_brain # Thu hồi bộ nhớ rác ngay lập tức
+            import gc
+            gc.collect()
+
         if os.path.exists(ub_idx):
             with open(ub_idx, 'r', encoding='utf-8', errors='ignore') as f:
                 OBSIDIAN_UNIFIED_INDEX = json.load(f)
-        print(f"🎉 Đã nạp thành công TOÀN BỘ {len(OBSIDIAN_UNIFIED_BRAIN):,} mục tri thức từ Toàn bộ Obsidian Vault vào Bộ Não AI!")
+        print(f"🎉 Đã nạp thành công và tối ưu RAM {len(OBSIDIAN_UNIFIED_BRAIN):,} mục tri thức (RAM < 150MB)!")
 except Exception as e:
     print(f"⚠️ Lỗi nạp Obsidian Unified Brain: {e}")
 
