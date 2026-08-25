@@ -555,49 +555,26 @@ def search_dataset_by_similarity(query, dataset, question_key="question", answer
 def search_qa_1000_knowledge_base(query):
     return search_dataset_by_similarity(query, QA_1000_DATASET, min_sim=0.80)
 
-# NẠP KHO TRI THỨC BÁCH KHOA TOÀN THƯ ĐẤT ĐAI 10.000 CÂU Q&A TỪ THƯ MỤC TRAINING OLLMA
-# NẠP KHO TRI THỨC BÁCH KHOA TOÀN THƯ ĐẤT ĐAI 10.000 CÂU Q&A (PHIÊN BẢN V2 MỚI NHẤT)
+# NẠP KHO TRI THỨC BÁCH KHOA TOÀN THƯ ĐẤT ĐAI 10.000 CÂU Q&A
 BACH_KHOA_10000_DATASET = []
-BACH_KHOA_10000_INDEX = {} # Inverted index by keywords for fast sub-millisecond retrieval
-try:
-    # 1. Ưu tiên nạp từ JSON Cache siêu tốc trong 06 - BỘ NHỚ AI
-    bk_json_v2 = os.path.join(OBSIDIAN_VAULT_PATH, "06 - BỘ NHỚ AI", "bach_khoa_10000_v2.json")
-    bk_md_v2 = os.path.join(OBSIDIAN_VAULT_PATH, "bach-khoa-toan-thu-dat-ai-10000-v2.md")
-    bk_md_v1 = os.path.join(OBSIDIAN_VAULT_PATH, "bach-khoa-toan-thu-dat-ai-10000.md")
-
-    if os.path.exists(bk_json_v2):
-        with open(bk_json_v2, 'r', encoding='utf-8', errors='ignore') as f:
-            BACH_KHOA_10000_DATASET = json.load(f)
-        for idx, entry in enumerate(BACH_KHOA_10000_DATASET):
-            words = set(re.findall(r'\w+', entry.get("question", "").lower()))
-            for w in words:
-                if len(w) > 2:
-                    if w not in BACH_KHOA_10000_INDEX:
-                        BACH_KHOA_10000_INDEX[w] = []
-                    if len(BACH_KHOA_10000_INDEX[w]) < 100:
-                        BACH_KHOA_10000_INDEX[w].append(idx)
-        print(f"✅ Đã nạp thành công {len(BACH_KHOA_10000_DATASET):,} câu hỏi Bách khoa toàn thư đất đai (Phiên bản V2 Chuẩn Cán Bộ) vào bộ nhớ AI!")
-    elif os.path.exists(bk_md_v2) or os.path.exists(bk_md_v1):
-        target_md = bk_md_v2 if os.path.exists(bk_md_v2) else bk_md_v1
-        with open(target_md, 'r', encoding='utf-8', errors='ignore') as f:
-            md_text = f.read()
-        blocks = re.findall(r'###\s*Câu\s*\d+:\s*([^\n]+)\s*\n+\s*\*\*Trả lời:\*\*\s*\n+(.*?)(?=\n+---|\n+###|$)', md_text, flags=re.DOTALL)
-        for q_str, a_str in blocks:
-            clean_q = q_str.strip()
-            clean_a = a_str.strip()
-            if clean_q and clean_a:
-                entry = {"question": clean_q, "answer": clean_a}
-                BACH_KHOA_10000_DATASET.append(entry)
-                words = set(re.findall(r'\w+', clean_q.lower()))
+BACH_KHOA_10000_INDEX = {}
+if not CLOUD_MODE:
+    try:
+        bk_json_v2 = os.path.join(OBSIDIAN_VAULT_PATH, "06 - BỘ NHỚ AI", "bach_khoa_10000_v2.json")
+        if os.path.exists(bk_json_v2):
+            with open(bk_json_v2, 'r', encoding='utf-8', errors='ignore') as f:
+                BACH_KHOA_10000_DATASET = json.load(f)
+            for idx, entry in enumerate(BACH_KHOA_10000_DATASET):
+                words = set(re.findall(r'\w+', entry.get("question", "").lower()))
                 for w in words:
                     if len(w) > 2:
                         if w not in BACH_KHOA_10000_INDEX:
                             BACH_KHOA_10000_INDEX[w] = []
-                        if len(BACH_KHOA_10000_INDEX[w]) < 100:
-                            BACH_KHOA_10000_INDEX[w].append(len(BACH_KHOA_10000_DATASET) - 1)
-        print(f"✅ Đã nạp thành công {len(BACH_KHOA_10000_DATASET):,} câu hỏi Bách khoa toàn thư đất đai từ Obsidian Vault (.md) vào bộ nhớ AI!")
-except Exception as e:
-    print(f"⚠️ Lỗi nạp Bách khoa toàn thư đất đai 10000: {e}")
+                        if len(BACH_KHOA_10000_INDEX[w]) < 50:
+                            BACH_KHOA_10000_INDEX[w].append(idx)
+            print(f"✅ Đã nạp {len(BACH_KHOA_10000_DATASET):,} câu hỏi Bách khoa vào bộ nhớ!")
+    except Exception as e:
+        print(f"⚠️ Lỗi nạp Bách khoa 10000: {e}")
 
 def search_bach_khoa_10000_knowledge_base(query, top_k=2):
     if not BACH_KHOA_10000_DATASET or not query:
@@ -610,59 +587,16 @@ def search_bach_khoa_10000_knowledge_base(query, top_k=2):
         if w in BACH_KHOA_10000_INDEX:
             candidate_indices.update(BACH_KHOA_10000_INDEX[w])
     if not candidate_indices:
-        candidate_subset = BACH_KHOA_10000_DATASET[:500]
+        candidate_subset = BACH_KHOA_10000_DATASET[:300]
     else:
         candidate_subset = [BACH_KHOA_10000_DATASET[i] for i in candidate_indices]
     return search_dataset_by_similarity(query, candidate_subset, min_sim=0.75)[:top_k]
 
-# NẠP KHO TRI THỨC BÁCH KHOA TOÀN THƯ KỸ THUẬT ĐỊA CHÍNH & ĐO ĐẠC BẢN ĐỒ 10.000 CÂU Q&A
 KY_THUAT_DIA_CHINH_10000_DATASET = []
 KY_THUAT_DIA_CHINH_10000_INDEX = {}
-try:
-    kt_json = os.path.join(OBSIDIAN_VAULT_PATH, "06 - BỘ NHỚ AI", "ky_thuat_dia_chinh_10000.json")
-    kt_md = os.path.join(OBSIDIAN_VAULT_PATH, "ky-thuat-dia-chinh-10000.md")
-
-    if os.path.exists(kt_json):
-        with open(kt_json, 'r', encoding='utf-8', errors='ignore') as f:
-            KY_THUAT_DIA_CHINH_10000_DATASET = json.load(f)
-    elif os.path.exists(kt_md):
-        with open(kt_md, 'r', encoding='utf-8', errors='ignore') as f:
-            md_text = f.read()
-        blocks = re.findall(r'###\s*Câu\s*\d+:\s*([^\n]+)\s*\n+\s*\*\*Trả lời:\*\*\s*\n+(.*?)(?=\n+---|\n+###|$)', md_text, flags=re.DOTALL)
-        for q_str, a_str in blocks:
-            clean_q = q_str.strip()
-            clean_a = a_str.strip()
-            if clean_q and clean_a:
-                KY_THUAT_DIA_CHINH_10000_DATASET.append({"question": clean_q, "answer": clean_a})
-
-    if KY_THUAT_DIA_CHINH_10000_DATASET:
-        for idx, entry in enumerate(KY_THUAT_DIA_CHINH_10000_DATASET):
-            words = set(re.findall(r'\w+', entry.get("question", "").lower()))
-            for w in words:
-                if len(w) > 2:
-                    if w not in KY_THUAT_DIA_CHINH_10000_INDEX:
-                        KY_THUAT_DIA_CHINH_10000_INDEX[w] = []
-                    if len(KY_THUAT_DIA_CHINH_10000_INDEX[w]) < 100:
-                        KY_THUAT_DIA_CHINH_10000_INDEX[w].append(idx)
-        print(f"✅ Đã nạp thành công {len(KY_THUAT_DIA_CHINH_10000_DATASET):,} câu hỏi Bách khoa Kỹ thuật Địa chính & Đo đạc Bản đồ (10.000 Q&A) vào bộ não AI!")
-except Exception as e:
-    print(f"⚠️ Lỗi nạp Kỹ thuật địa chính 10000: {e}")
 
 def search_ky_thuat_dia_chinh_10000_knowledge_base(query, top_k=2):
-    if not KY_THUAT_DIA_CHINH_10000_DATASET or not query:
-        return []
-    words = [w for w in re.findall(r'\w+', query.lower()) if len(w) > 2]
-    if not words:
-        return []
-    candidate_indices = set()
-    for w in words:
-        if w in KY_THUAT_DIA_CHINH_10000_INDEX:
-            candidate_indices.update(KY_THUAT_DIA_CHINH_10000_INDEX[w])
-    if not candidate_indices:
-        candidate_subset = KY_THUAT_DIA_CHINH_10000_DATASET[:500]
-    else:
-        candidate_subset = [KY_THUAT_DIA_CHINH_10000_DATASET[i] for i in candidate_indices]
-    return search_dataset_by_similarity(query, candidate_subset, min_sim=0.70)[:top_k]
+    return []
 
 # ======================================================================
 # 🧠 NẠP TOÀN BỘ KHO TRI THỨC OBSIDIAN VAULT (UNIFIED BRAIN: 48.286 MỤC TRI THỨC)
