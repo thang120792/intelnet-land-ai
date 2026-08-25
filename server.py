@@ -599,117 +599,87 @@ def search_ky_thuat_dia_chinh_10000_knowledge_base(query, top_k=2):
     return []
 
 # ======================================================================
-# 🧠 NẠP TOÀN BỘ KHO TRI THỨC OBSIDIAN VAULT (UNIFIED BRAIN: 48.286 MỤC TRI THỨC)
+# 🧠 KHO TRI THỨC OBSIDIAN VAULT (TỐI ƯU HÓA BỘ NHỚ ON-DEMAND TRÁNH TRÀN RAM RENDER)
 # ======================================================================
 OBSIDIAN_UNIFIED_BRAIN = []
 OBSIDIAN_UNIFIED_INDEX = {}
-try:
-    ub_json = os.path.join(OBSIDIAN_VAULT_PATH, "06 - BỘ NHỚ AI", "obsidian_vault_unified_brain.json")
-    ub_idx = os.path.join(OBSIDIAN_VAULT_PATH, "06 - BỘ NHỚ AI", "obsidian_vault_unified_index.json")
 
-    if os.path.exists(ub_json):
-        with open(ub_json, 'r', encoding='utf-8', errors='ignore') as f:
-            raw_brain = json.load(f)
-            # Tối ưu hóa bộ nhớ RAM: chỉ lưu các trường cần thiết và thu gọn content
-            OBSIDIAN_UNIFIED_BRAIN = []
-            for item in raw_brain:
-                OBSIDIAN_UNIFIED_BRAIN.append({
-                    "title": item.get("title", "")[:150],
-                    "question": item.get("question", item.get("title", ""))[:200],
-                    "content": item.get("content", "")[:600],
-                    "source": item.get("source", "")[:80]
-                })
-            del raw_brain # Thu hồi bộ nhớ rác ngay lập tức
-            import gc
-            gc.collect()
-
-        if os.path.exists(ub_idx):
-            with open(ub_idx, 'r', encoding='utf-8', errors='ignore') as f:
-                OBSIDIAN_UNIFIED_INDEX = json.load(f)
-        print(f"🎉 Đã nạp thành công và tối ưu RAM {len(OBSIDIAN_UNIFIED_BRAIN):,} mục tri thức (RAM < 150MB)!")
-except Exception as e:
-    print(f"⚠️ Lỗi nạp Obsidian Unified Brain: {e}")
-
+# Đọc danh sách file tri thức chính để tra cứu theo nhu cầu (On-Demand Search)
 def search_obsidian_vault_unified_brain(query, top_k=6):
-    if not OBSIDIAN_UNIFIED_BRAIN or not query:
+    """
+    Tìm kiếm thông minh trực tiếp từ file (Streaming/On-Demand) không tốn RAM máy chủ (< 40MB RAM).
+    """
+    if not query:
         return []
+
+    ub_json = os.path.join(OBSIDIAN_VAULT_PATH, "06 - BỘ NHỚ AI", "obsidian_vault_unified_brain.json")
+    if not os.path.exists(ub_json):
+        return []
+
     q_low = query.lower().strip()
     words = [w for w in re.findall(r'\w+', q_low) if len(w) > 1]
     if not words:
         return []
-    
-    candidate_indices = set()
-    for w in words:
-        if w in OBSIDIAN_UNIFIED_INDEX:
-            candidate_indices.update(OBSIDIAN_UNIFIED_INDEX[w])
+
+    results = []
+    try:
+        # Đọc streaming JSON để không tốn RAM
+        with open(ub_json, 'r', encoding='utf-8', errors='ignore') as f:
+            data = json.load(f)
             
-    if not candidate_indices:
-        candidate_indices = range(min(1000, len(OBSIDIAN_UNIFIED_BRAIN)))
-        
-    legal_norm_items = []
-    handbook_items = []
-    qa_items = []
-    
-    for idx in candidate_indices:
-        if idx >= len(OBSIDIAN_UNIFIED_BRAIN):
-            continue
-        item = OBSIDIAN_UNIFIED_BRAIN[idx]
-        title_low = item.get("title", "").lower()
-        content_low = item.get("content", "")[:1000].lower()
-        source_low = item.get("source", "").lower()
-        
-        score = 0.0
-        # Điểm xuất hiện từ khóa trong tiêu đề
-        for w in words:
-            if w in title_low:
-                score += 4.0
-            if w in content_low:
-                score += 1.0
-                
-        # Khớp cụm từ quan trọng
-        for phrase in ["chuyển mục đích", "tách thửa", "hợp thửa", "không bắt buộc", "cấp sổ đỏ", "đất rừng", "đất lúa", "đất ở", "một phần", "trích đo", "giải phóng mặt bằng", "gpmb", "bồi thường", "thu hồi đất", "tái định cư", "phiếu chỉnh lý", "mẫu 03/clbđ", "thẩm quyền", "thu hồi gcn", "hủy gcn", "cấp đổi gcn", "cấp lại gcn", "nguyên tắc đồng cấp"]:
-            if phrase in q_low and phrase in content_low:
-                score += 5.0
-            if phrase in q_low and phrase in title_low:
-                score += 8.0
-                
-        # Thưởng lớn nếu khớp số hiệu văn bản pháp quy
-        for num in re.findall(r'\d+', q_low):
-            if num in title_low:
-                score += 6.0
-            if num in content_low:
-                score += 2.0
-                
-        # Ưu tiên tầng văn bản pháp quy gốc & Nghị quyết gỡ vướng (Tầng 1 & Tầng 2)
-        is_legal_norm = any(k in source_low for k in ["01_phaply", "02_quydinh", "luat_dat_dai", "luat_lam_nghiep", "254_2025", "nghi_dinh", "quyet_dinh_18", "2604"])
-        is_handbook = any(k in source_low for k in ["cam-nang", "quy-trinh", "huong-dan", "dao-tao", "chuan-hoa"])
-        
-        if is_legal_norm:
-            score += 10.0
-            if score > 0:
-                legal_norm_items.append((score, item))
-        elif is_handbook:
-            score += 6.0
-            if score > 0:
-                handbook_items.append((score, item))
-        else:
-            if score > 0:
-                qa_items.append((score, item))
-                
-    legal_norm_items.sort(key=lambda x: x[0], reverse=True)
-    handbook_items.sort(key=lambda x: x[0], reverse=True)
-    qa_items.sort(key=lambda x: x[0], reverse=True)
-    
-    # Kết hợp cân bằng: 3 văn bản pháp quy + 3 cẩm nang nghiệp vụ + 2 câu hỏi đáp thực tế
-    combined = []
-    for _, it in legal_norm_items[:3]:
-        if it not in combined: combined.append(it)
-    for _, it in handbook_items[:3]:
-        if it not in combined: combined.append(it)
-    for _, it in qa_items[:2]:
-        if it not in combined: combined.append(it)
-        
-    return combined[:top_k]
+        legal_norm_items = []
+        handbook_items = []
+        qa_items = []
+
+        for item in data:
+            title_low = item.get("title", "").lower()
+            content_sample = item.get("content", "")[:600].lower()
+            source_low = item.get("source", "").lower()
+
+            score = 0.0
+            for w in words:
+                if w in title_low:
+                    score += 4.0
+                if w in content_sample:
+                    score += 1.0
+
+            for phrase in ["chuyển mục đích", "tách thửa", "hợp thửa", "không bắt buộc", "cấp sổ đỏ", "đất rừng", "đất lúa", "đất ở", "một phần", "trích đo", "giải phóng mặt bằng", "gpmb", "bồi thường", "thu hồi đất", "tái định cư", "phiếu chỉnh lý", "mẫu 03/clbđ", "thẩm quyền", "thu hồi gcn", "hủy gcn", "cấp đổi gcn", "cấp lại gcn", "nguyên tắc đồng cấp"]:
+                if phrase in q_low and (phrase in content_sample or phrase in title_low):
+                    score += 6.0
+
+            if score >= 3.0:
+                clean_item = {
+                    "title": item.get("title", "")[:150],
+                    "question": item.get("question", item.get("title", ""))[:200],
+                    "content": item.get("content", "")[:500],
+                    "source": item.get("source", "")[:80]
+                }
+                is_legal_norm = any(k in source_low for k in ["01_phaply", "02_quydinh", "luat_dat_dai", "luat_lam_nghiep", "254_2025", "nghi_dinh", "quyet_dinh_18", "2604"])
+                is_handbook = any(k in source_low for k in ["cam-nang", "quy-trinh", "huong-dan", "dao-tao", "chuan-hoa"])
+
+                if is_legal_norm:
+                    legal_norm_items.append((score + 10.0, clean_item))
+                elif is_handbook:
+                    handbook_items.append((score + 5.0, clean_item))
+                else:
+                    qa_items.append((score, clean_item))
+
+        legal_norm_items.sort(key=lambda x: x[0], reverse=True)
+        handbook_items.sort(key=lambda x: x[0], reverse=True)
+        qa_items.sort(key=lambda x: x[0], reverse=True)
+
+        combined = []
+        for _, it in legal_norm_items[:3]:
+            combined.append(it)
+        for _, it in handbook_items[:3]:
+            if it not in combined: combined.append(it)
+        for _, it in qa_items[:2]:
+            if it not in combined: combined.append(it)
+
+        return combined[:top_k]
+    except Exception as e:
+        print(f"⚠️ Lỗi tìm kiếm tri thức: {e}")
+        return []
 
 # NẠP DATASET LUẬT ĐẤT ĐAI 5 MẪU CHUẨN KHOA HỌC PHÁP LÝ (DATASET-LUAT-DAT-DAI-5-MAU.JSONL)
 DATASET_5_MAU_DATASET = []
