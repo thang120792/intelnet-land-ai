@@ -2524,9 +2524,11 @@ def api_status():
 
 @app.route('/<path:filename>')
 def serve_static(filename):
+    if filename.startswith('api/'):
+        return jsonify({"error": "API route not found"}), 404
     resp = send_from_directory('.', filename)
     # Buộc trình duyệt không cache các file JS/CSS
-    if filename in ('app.js', 'app_v2.js', 'styles.css'):
+    if filename in ('app.js', 'app_v2.js', 'styles.css') or filename.endswith('.js') or filename.endswith('.css'):
         resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         resp.headers['Pragma'] = 'no-cache'
         resp.headers['Expires'] = '0'
@@ -2639,8 +2641,7 @@ def send_zalo_bot_reply(chat_id, text):
     """Gửi phản hồi tin nhắn qua Zalo Bot API"""
     try:
         url = f"https://bot-api.zaloplatforms.com/bot{ZALO_BOT_TOKEN}/sendMessage"
-        # Chia nhỏ nếu vượt quá 1900 ký tự
-        max_len = 1900
+        max_len = 1100
         chunks = []
         text = str(text).strip()
         while len(text) > max_len:
@@ -2652,18 +2653,53 @@ def send_zalo_bot_reply(chat_id, text):
         if text:
             chunks.append(text)
 
-        for chunk in chunks:
-            payload = json.dumps({"chat_id": str(chat_id), "text": chunk}, ensure_ascii=False).encode('utf-8')
+        total_chunks = len(chunks)
+        for idx, chunk in enumerate(chunks):
+            formatted_chunk = chunk
+            if total_chunks > 1:
+                formatted_chunk = f"📄 [PHẦN {idx+1}/{total_chunks}]\n" + formatted_chunk
+
+            payload = json.dumps({"chat_id": str(chat_id), "text": formatted_chunk}, ensure_ascii=False).encode('utf-8')
             req = urllib.request.Request(
                 url,
                 data=payload,
                 headers={"Content-Type": "application/json; charset=utf-8", "User-Agent": "ZaloBot-Intelnet/1.0"}
             )
-            with urllib.request.urlopen(req, timeout=15) as res:
-                pass
-            time.sleep(0.2)
+            with urllib.request.urlopen(req, timeout=20) as res:
+                res_body = res.read().decode('utf-8')
+                print(f"📤 [Zalo SendMessage Success {idx+1}/{total_chunks}]: {res_body}")
+            time.sleep(0.5)
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode('utf-8', errors='ignore')
+        print(f"❌ [Zalo SendMessage HTTP Error {e.code}]: {err_body}")
     except Exception as e:
-        print(f"⚠️ Lỗi gửi tin nhắn Zalo: {e}")
+        print(f"❌ [Zalo SendMessage Exception]: {e}")
+
+def process_zalo_message_async(chat_id, text, sender_name):
+    """Xử lý phân tích AI và gửi tin nhắn Zalo ngầm trong Thread riêng để Webhook trả về 200 ngay tức thì"""
+    try:
+        lower_text = text.lower()
+        if lower_text in ["/start", "/help", "bắt đầu", "trợ giúp", "menu", "hi", "xin chào", "alo"]:
+            welcome_msg = (
+                f"Xin chào {sender_name}! 👋\n\n"
+                "🏛️ Tôi là **Bot Chuyên Gia Tư Vấn Luật Đất Đai & Thủ Tục Địa Chính INTELNET**.\n\n"
+                "Tôi có thể hỗ trợ bạn:\n"
+                "1. 📜 **Tra cứu Luật Đất đai 2024**, Nghị định 101, 102, 254/2026/NĐ-CP, QĐ 2604...\n"
+                "2. 📐 **Tư vấn đo đạc**, tách thửa, hợp thửa, cấp đổi Sổ đỏ tại Thanh Hóa.\n"
+                "3. 📝 **Hướng dẫn viết đơn từ**, biểu mẫu hồ sơ địa chính chuẩn pháp lý.\n"
+                "4. 📍 **Tra cứu sáp nhập địa danh** và hạn mức đất ở tỉnh Thanh Hóa.\n\n"
+                "👉 Hãy gửi câu hỏi hoặc thắc mắc của bạn ngay bên dưới!"
+            )
+            send_zalo_bot_reply(chat_id, welcome_msg)
+        else:
+            session_id = f"zalo_{chat_id}"
+            print(f"🧠 [Zalo AI Pipeline Start]: Đang xử lý câu hỏi '{text[:60]}...'")
+            answer_text, intent_type, model_used = process_antigravity_core_pipeline(text, session_id=session_id)
+            print(f"✅ [Zalo AI Pipeline Done] Model: {model_used} -> Đang gửi phản hồi...")
+            send_zalo_bot_reply(chat_id, answer_text)
+    except Exception as e:
+        print(f"❌ [Zalo Async Error]: {e}")
+        send_zalo_bot_reply(chat_id, "⚠️ Hệ thống đang bận hoặc quá tải xử lý, quý khách vui lòng thử lại sau giây lát.")
 
 @app.route('/api/zalo/webhook', methods=['POST', 'GET'])
 @app.route('/thanhhoa/webhook', methods=['POST', 'GET'])
@@ -2676,7 +2712,6 @@ def zalo_webhook():
 
     message = data.get("message") or data.get("channel_post") or data.get("edited_message")
     if not message:
-        # Kiểm tra nếu data chứa trực tiếp cấu trúc tin nhắn
         if "chat" in data and "text" in data:
             message = data
 
@@ -2687,49 +2722,10 @@ def zalo_webhook():
         sender = message.get("from", {})
         sender_name = sender.get("first_name") or sender.get("display_name") or "Quý khách"
 
-        if chat_id:
-            # 1. Chặn ảnh và file đính kèm để tiết kiệm token
-            is_media = any(k in message for k in ["photo", "document", "image", "attachments", "sticker", "audio", "voice", "video"])
-            if is_media or (not text and any(k in message for k in ["file", "caption"])):
-                reject_msg = (
-                    "⚠️ **THÔNG BÁO TỪ HỆ THỐNG:**\n\n"
-                    "Bot hiện tại **CHỈ TIẾP NHẬN CÂU HỎI DẠNG VĂN BẢN TRỰC TIẾP** và **KHÔNG XỬ LÝ ẢNH CHỤP / TỆP ĐÍNH KÈM**.\n\n"
-                    "👉 Quý khách vui lòng gõ câu hỏi hoặc tóm tắt nội dung thắc mắc bằng văn bản để được giải đáp nhanh nhất!"
-                )
-                send_zalo_bot_reply(chat_id, reject_msg)
-                return jsonify({"ok": True}), 200
-
-            if not text:
-                return jsonify({"ok": True}), 200
-
-            # 2. Chặn văn bản dán quá dài (> 800 ký tự)
-            if len(text) > 800:
-                reject_long_msg = (
-                    f"⚠️ **CÂU HỎI QUÁ DÀI ({len(text)} ký tự):**\n\n"
-                    f"Để đảm bảo tốc độ phản hồi và độ chính xác, hệ thống chỉ tiếp nhận câu hỏi tối đa **800 ký tự**.\n\n"
-                    "👉 Quý khách vui lòng tóm tắt lại nội dung câu hỏi hoặc tình huống cụ thể thành 1-2 đoạn ngắn gọn."
-                )
-                send_zalo_bot_reply(chat_id, reject_long_msg)
-                return jsonify({"ok": True}), 200
-
-            lower_text = text.lower()
-            if lower_text in ["/start", "/help", "bắt đầu", "trợ giúp", "menu", "hi", "xin chào", "alo"]:
-                welcome_msg = (
-                    f"Xin chào {sender_name}! 👋\n\n"
-                    "🏛️ Tôi là **Bot Chuyên Gia Tư Vấn Luật Đất Đai & Thủ Tục Địa Chính INTELNET**.\n\n"
-                    "Tôi có thể hỗ trợ bạn:\n"
-                    "1. 📜 **Tra cứu Luật Đất đai 2024**, Nghị định 101, 102, 254/2026/NĐ-CP, QĐ 2604...\n"
-                    "2. 📐 **Tư vấn đo đạc**, tách thửa, hợp thửa, cấp đổi Sổ đỏ tại Thanh Hóa.\n"
-                    "3. 📝 **Hướng dẫn viết đơn từ**, biểu mẫu hồ sơ địa chính chuẩn pháp lý.\n"
-                    "4. 📍 **Tra cứu sáp nhập địa danh** và hạn mức đất ở tỉnh Thanh Hóa.\n\n"
-                    "*(Lưu ý: Bot chỉ nhận câu hỏi văn bản dưới 800 từ, không nhận ảnh/tệp)*\n\n"
-                    "👉 Hãy gửi câu hỏi hoặc thắc mắc của bạn ngay bên dưới!"
-                )
-                send_zalo_bot_reply(chat_id, welcome_msg)
-            else:
-                session_id = f"zalo_{chat_id}"
-                answer_text, intent_type, model_used = process_antigravity_core_pipeline(text, session_id=session_id)
-                send_zalo_bot_reply(chat_id, answer_text)
+        if chat_id and text:
+            # Chạy xử lý AI trong background thread để trả về HTTP 200 cho Zalo ngay tức thì (< 0.1s), tránh bị Zalo timeout
+            import threading
+            threading.Thread(target=process_zalo_message_async, args=(chat_id, text, sender_name), daemon=True).start()
 
     return jsonify({"ok": True}), 200
 
