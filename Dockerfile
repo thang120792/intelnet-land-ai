@@ -1,4 +1,4 @@
-﻿FROM python:3.11-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -15,5 +15,5 @@ EXPOSE 7860
 # Set CLOUD_MODE tự động khi chạy trên HF
 ENV HF_SPACE=1
 
-# Chạy bằng gunicorn (production WSGI server)
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--timeout", "120", "--preload", "server:app"]
+# Render và các Cloud Host tự cấp cổng qua biến $PORT
+CMD gunicorn --bind 0.0.0.0:${PORT:-10000} --workers 1 --timeout 120 server:app
